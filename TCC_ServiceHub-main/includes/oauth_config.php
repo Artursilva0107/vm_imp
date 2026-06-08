@@ -12,7 +12,7 @@
 //  Microsoft → https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps
 // ================================================================
 
-define('APP_BASE_URL', 'http://localhost'); // sem barra no final
+define('APP_BASE_URL', 'https://bountiful-wisdom-production.up.railway.app'); // sem barra no final
 
 // ── Google ──────────────────────────────────────────────────────
 define('GOOGLE_CLIENT_ID',     'SEU_GOOGLE_CLIENT_ID.apps.googleusercontent.com');
