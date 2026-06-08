@@ -1,0 +1,138 @@
+<?php
+session_start();
+require_once '../includes/config.php';
+require_once '../includes/auth.php';
+require_once '../includes/functions.php';
+verificarLogin();
+if (!isEmpresa()) { header('Location: ../index.php'); exit; }
+
+$page   = max(1, (int)($_GET['page'] ?? 1));
+$limit  = 10;
+$offset = ($page - 1) * $limit;
+$catFiltro = trim($_GET['categoria'] ?? '');
+
+$eid = (int)$_SESSION['empresa_id'];
+
+$where  = 'WHERE empresa_id = ?';
+$params = [$eid];
+if ($catFiltro !== '') {
+    $where   .= ' AND categoria = ?';
+    $params[] = $catFiltro;
+}
+
+$total      = $pdo->prepare("SELECT COUNT(*) FROM servicos $where");
+$total->execute($params);
+$total      = $total->fetchColumn();
+$totalPages = (int)ceil($total / $limit);
+
+$sql = "SELECT * FROM servicos $where ORDER BY id DESC LIMIT ? OFFSET ?";
+$stmt = $pdo->prepare($sql);
+foreach ($params as $k => $v) $stmt->bindValue($k + 1, $v);
+$stmt->bindValue(count($params) + 1, (int)$limit, PDO::PARAM_INT);
+$stmt->bindValue(count($params) + 2, (int)$offset, PDO::PARAM_INT);
+$stmt->execute();
+$servicos = $stmt->fetchAll();
+
+$categorias = $pdo->prepare("SELECT DISTINCT categoria FROM servicos WHERE empresa_id = ? AND categoria IS NOT NULL AND categoria != '' ORDER BY categoria");
+$categorias->execute([$eid]);
+$categorias = $categorias->fetchAll(PDO::FETCH_COLUMN);
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Serviços — ServiceHub</title>
+  <link rel="stylesheet" href="../css/estilo.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<nav class="dash-nav" style="background:linear-gradient(135deg,var(--navy) 0%,var(--navy-soft) 100%);border-bottom:1px solid rgba(201,168,76,.2);position:sticky;top:0;z-index:200;box-shadow:0 2px 20px rgba(13,27,42,.3);">
+  <div class="inner" style="max-width:1200px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;min-height:64px;flex-wrap:wrap;gap:12px;">
+    <div class="logo"><h1>Service<span class="logo-span">Hub</span></h1><small style="font-size:11px;color:var(--slate);display:block;">Área da Empresa</small></div>
+    <button class="hamburger" onclick="document.querySelector('.nav-items-svc').classList.toggle('open')">☰</button>
+    <div class="nav-items nav-items-svc" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <a href="../dashboard_empresa.php" style="color:var(--slate-lt);font-size:13px;font-weight:500;padding:7px 14px;border-radius:var(--r-sm);transition:all var(--ease);text-decoration:none;">Início</a>
+      <a href="index.php" style="color:#fff;background:rgba(201,168,76,.18);font-size:13px;font-weight:500;padding:7px 14px;border-radius:var(--r-sm);text-decoration:none;">Serviços</a>
+      <a href="../empresas/meus_servicos.php" style="color:var(--slate-lt);font-size:13px;font-weight:500;padding:7px 14px;border-radius:var(--r-sm);text-decoration:none;">Orçamentos</a>
+      <a href="../relatorios/index.php" style="color:var(--slate-lt);font-size:13px;font-weight:500;padding:7px 14px;border-radius:var(--r-sm);text-decoration:none;">Relatórios</a>
+      <a href="../logout.php" style="color:var(--slate-lt);font-size:13px;font-weight:500;padding:7px 14px;border-radius:var(--r-sm);text-decoration:none;">Sair</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-title-row">
+    <h1>Serviços</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="create.php" class="btn btn-primary">+ Novo Serviço</a>
+      <a href="../orcamentos/index.php" class="btn btn-ghost">Orçamentos</a>
+    </div>
+  </div>
+
+  <?php if (isset($_GET['msg'])): echo showMessage(htmlspecialchars(urldecode($_GET['msg'])), $_GET['type'] ?? 'success'); endif; ?>
+
+  <?php if (!empty($categorias)): ?>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;align-items:center;">
+    <span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">Filtrar:</span>
+    <a href="index.php" class="btn btn-sm <?= $catFiltro==='' ? 'btn-primary' : 'btn-ghost' ?>">Todos</a>
+    <?php foreach ($categorias as $cat): ?>
+    <a href="?categoria=<?= urlencode($cat) ?>" class="btn btn-sm <?= $catFiltro===$cat ? 'btn-primary' : 'btn-ghost' ?>"><?= htmlspecialchars($cat) ?></a>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>#</th><th>Nome</th><th>Categoria</th><th>Valor</th><th>Duração</th><th>Status</th><th>Ações</th>
+      </tr></thead>
+      <tbody>
+        <?php foreach ($servicos as $s): ?>
+        <tr>
+          <td style="color:var(--text-muted);font-size:12px;">#<?= $s['id'] ?></td>
+          <td>
+            <strong><?= htmlspecialchars($s['nome']) ?></strong>
+            <?php if ($s['descricao']): ?>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;"><?= htmlspecialchars(mb_substr($s['descricao'],0,60)) ?>…</div>
+            <?php endif; ?>
+          </td>
+          <td><?= $s['categoria'] ? "<span class='badge badge-primary'>".htmlspecialchars($s['categoria'])."</span>" : '<span style="color:var(--text-muted)">—</span>' ?></td>
+          <td><strong style="color:var(--teal);"><?= $s['valor'] !== null ? formatMoney($s['valor']) : '<span style="color:#888;font-style:italic;">A definir</span>' ?></strong></td>
+          <td><?= $s['duracao_estimada'] ? $s['duracao_estimada'].'h' : '—' ?></td>
+          <td><?= $s['status'] ? "<span class='badge badge-aprovado'>Ativo</span>" : "<span class='badge badge-rejeitado'>Inativo</span>" ?></td>
+          <td>
+            <div style="display:flex;gap:6px;">
+              <a href="edit.php?id=<?= $s['id'] ?>" class="btn btn-sm btn-warning">Editar</a>
+              <a href="delete.php?id=<?= $s['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Excluir este serviço?')">Excluir</a>
+            </div>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+        <?php if (empty($servicos)): ?>
+        <tr><td colspan="7">
+          <div class="empty-state">
+            <span class="empty-icon">📋</span>
+            <h3>Nenhum serviço cadastrado</h3>
+            <p>Adicione o primeiro serviço para começar.</p>
+            <a href="create.php" class="btn btn-primary">+ Novo Serviço</a>
+          </div>
+        </td></tr>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+
+  <?php if ($totalPages > 1): ?>
+  <ul class="pagination">
+    <?php for ($i=1;$i<=$totalPages;$i++): ?>
+    <li class="<?= $i==$page?'active':'' ?>">
+      <?= $i==$page ? "<span>$i</span>" : "<a href='?page=$i".($catFiltro?"&categoria=".urlencode($catFiltro):"")."'>$i</a>" ?>
+    </li>
+    <?php endfor; ?>
+  </ul>
+  <?php endif; ?>
+</div>
+<script src="../js/nav.js"></script>
+</body>
+</html>
